@@ -1,0 +1,7 @@
+Sidescrolling in list
+Implement vim-style help menu in GUI
+Add additional EC2 commands on instances, such as:
+    - Start/Stop/Terminate
+    - Assign Elastic IP
+    - Create Image
+

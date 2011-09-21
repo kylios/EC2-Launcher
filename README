@@ -1,0 +1,48 @@
+EC2 Launcher
+============
+EC2 Launcher is a simple program to view ec2 instances and log into them or 
+transfer files to/from the various instances.  The program provides a simple
+but detailed interface into the EC2 instances, along with intuitive vim-like
+key bindings to navigate the UI. 
+
+EC2 Launcher is licensed under the GNU GPLv3
+(http://www.gnu.org/licenses/gpl.txt)
+
+Installation
+============
+To install, move the file ec2config.sample to /etc/ec2config and fill in the
+missing information.  You must then create the keypair directory with two 
+subdirectories: test and prod.  Put your private keys in here.
+
+Usage
+=====
+EC2 Launcher is simple to use.  There are two interfaces: the CLI and the GUI.
+
+GUI:
+
+    To launch the gui, run 
+    > ec2.py prod list
+    - or -
+    > ec2.py test list
+
+    You will be faced with a list of instances on your EC2 account.
+
+    up/down arrows, j/k                 navigate the selection up and down
+    enter, s                            log in as root to the selected instance
+    S                                   log in as a different user
+    <                                   copy a file from the server to your 
+                                        computer
+    >                                   copy a file from your computer to the 
+                                        server
+    /                                   search for a string, vim-style
+    r                                   refresh
+    q                                   quit
+
+CLI:
+
+    ec2.py ssh user@i-XXXXXXXX          Log into the specified instance 
+    ec2.py scp localfile user@i-XXXXXXXX:/path/to/remote/file
+    ec2.py scp user@i-XXXXXXXX:/path/to/remote/file localfile
+                                        Transfer files between your computer
+                                        and the instance
+    
