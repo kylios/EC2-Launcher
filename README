@@ -8,6 +8,11 @@ key bindings to navigate the UI.
 EC2 Launcher is licensed under the GNU GPLv3
 (http://www.gnu.org/licenses/gpl.txt)
 
+Dependencies
+============
+EC2 Launcher requires the urwid library and python2. It is also assumed that
+ssh and scp exist on the system.
+
 Installation
 ============
 To install, move the file ec2config.sample to /etc/ec2config and fill in the
