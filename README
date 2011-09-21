@@ -10,8 +10,8 @@ EC2 Launcher is licensed under the GNU GPLv3
 
 Dependencies
 ============
-EC2 Launcher requires the urwid library and python2. It is also assumed that
-ssh and scp exist on the system.
+EC2 Launcher requires boto, the urwid library, and python2. It is also assumed 
+that ssh and scp exist on the system.
 
 Installation
 ============
