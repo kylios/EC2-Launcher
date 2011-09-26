@@ -17,6 +17,7 @@
 
 import ConfigParser
 import os
+import os.path
 
 c = ConfigParser.ConfigParser()
 c.readfp(open('/etc/ec2config'))
@@ -269,6 +270,11 @@ class ec2_launcher(urwid.Frame):
         self.search_phrase = ""
         self.searching = False
 
+        # Handle tab-completing filenames
+        self.file_idx = 0
+        self.search_file = ""
+        self.tab_completing = False
+
         # Dictionary of instances 
         self.instances = instances
 
@@ -356,9 +362,72 @@ class ec2_launcher(urwid.Frame):
             self.footer_txt.set_caption("No results found.")
             self.listwalker.set_focus(focus[1])
 
+    def tab_complete(self, search_str):
+
+        search_dir = os.path.dirname(search_str)
+        if not self.tab_completing:
+            self.search_file = os.path.basename(search_str)
+            self.tab_completing = True
+
+        if search_dir == "":
+            search_dir = "."
+
+        log.write("search_dir: %s \n" % search_dir)
+        log.write("search_file: %s \n" % self.search_file)
+
+        files = os.listdir(search_dir)
+        files.sort()
+        matched_files = files if self.search_file == "" \
+                else [f for f in files if f.find(self.search_file) == 0]
+        
+        cur_file = matched_files[self.file_idx]
+        self.file_idx += 1
+        if self.file_idx >= len(matched_files):
+            self.file_idx = 0
+
+        self.search_idx = None
+
+        self.footer_txt.set_edit_text(search_dir + "/" + cur_file)
+        self.footer_txt.set_edit_pos(len(self.footer_txt.get_edit_text()))
+
+#        if self.old_dir_path != "":
+#            search_path = self.old_dir_path
+#            search_str = search_path
+#        else:
+#            search_path = os.path.dirname(search_str)
+#        log.write("search path: %s\n" % search_path)
+#        if search_path == "":
+#            search_path = "."
+#        if not os.path.exists(search_path):
+#            return False
+#        dir_path = os.path.abspath(search_path)
+#        if not os.path.exists(dir_path):
+#            return False
+#
+#        files = self.file_cache[dir_path] \
+#                if dir_path in self.file_cache.keys() \
+#                else os.listdir(dir_path)
+#        self.file_cache[dir_path] = files
+#
+#        log.write("search string: %s \n" % search_str)
+#        prefix = os.path.basename(search_str)
+#        files = [f for f in files if f.find(prefix) == 0]
+#        
+#        if search_path != self.old_dir_path or self.file_idx >= len(files):
+#            self.file_idx = 0
+#        cur_file = files[self.file_idx]
+#
+#        self.old_dir_path = search_path
+#        self.footer_txt.set_edit_text(search_path + "/" + cur_file)
+#        self.footer_txt.set_edit_pos(len(self.footer_txt.get_edit_text()))
+#        self.file_idx += 1
 
     def input_handler(self, input):
         focus = self.listwalker.get_focus()
+        if input != 'tab':
+            self.file_idx = 0
+            self.tab_completing = False
+            self.search_file = ""
 
         # Scroll down
         if input == 'j' or input == 'down':
@@ -385,6 +454,12 @@ class ec2_launcher(urwid.Frame):
         # Refresh list
         elif input == 'r' or input == 'R':
             self.action_refresh()
+
+        # tab-complete file names
+        elif input == 'tab':
+            if self.footer_txt.mode[:3] == 'scp':
+                if self.footer_txt.stage == 2:
+                    self.tab_complete(self.footer_txt.get_text_value())
 
         # do an action
         elif input == 'enter' or input == 's':
@@ -461,6 +536,9 @@ class ec2_launcher(urwid.Frame):
             self.set_focus('body')
             self.footer_input = False
             self.footer_txt.clear_mode()
+
+            self.file_idx = 0
+            self.old_dir_path = ""
 
 ####################
 # Control stuff
