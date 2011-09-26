@@ -362,7 +362,7 @@ class ec2_launcher(urwid.Frame):
             self.footer_txt.set_caption("No results found.")
             self.listwalker.set_focus(focus[1])
 
-    def tab_complete(self, search_str):
+    def tab_complete(self, search_str, arg, find_files_func):
 
         search_dir = os.path.dirname(search_str)
         if not self.tab_completing:
@@ -372,15 +372,13 @@ class ec2_launcher(urwid.Frame):
         if search_dir == "":
             search_dir = "."
 
-        log.write("search_dir: %s \n" % search_dir)
-        log.write("search_file: %s \n" % self.search_file)
-
-        files = os.listdir(search_dir)
+        files = find_files_func(search_dir, arg)
         files.sort()
         matched_files = files if self.search_file == "" \
                 else [f for f in files if f.find(self.search_file) == 0]
         
-        cur_file = matched_files[self.file_idx]
+        cur_file = "" if self.file_idx >= len(matched_files) \
+                else matched_files[self.file_idx]
         self.file_idx += 1
         if self.file_idx >= len(matched_files):
             self.file_idx = 0
@@ -390,37 +388,19 @@ class ec2_launcher(urwid.Frame):
         self.footer_txt.set_edit_text(search_dir + "/" + cur_file)
         self.footer_txt.set_edit_pos(len(self.footer_txt.get_edit_text()))
 
-#        if self.old_dir_path != "":
-#            search_path = self.old_dir_path
-#            search_str = search_path
-#        else:
-#            search_path = os.path.dirname(search_str)
-#        log.write("search path: %s\n" % search_path)
-#        if search_path == "":
-#            search_path = "."
-#        if not os.path.exists(search_path):
-#            return False
-#        dir_path = os.path.abspath(search_path)
-#        if not os.path.exists(dir_path):
-#            return False
-#
-#        files = self.file_cache[dir_path] \
-#                if dir_path in self.file_cache.keys() \
-#                else os.listdir(dir_path)
-#        self.file_cache[dir_path] = files
-#
-#        log.write("search string: %s \n" % search_str)
-#        prefix = os.path.basename(search_str)
-#        files = [f for f in files if f.find(prefix) == 0]
-#        
-#        if search_path != self.old_dir_path or self.file_idx >= len(files):
-#            self.file_idx = 0
-#        cur_file = files[self.file_idx]
-#
-#        self.old_dir_path = search_path
-#        self.footer_txt.set_edit_text(search_path + "/" + cur_file)
-#        self.footer_txt.set_edit_pos(len(self.footer_txt.get_edit_text()))
-#        self.file_idx += 1
+    def local_find_files(self, search_dir, arg):
+        return os.listdir(search_dir)
+
+    def remote_find_files(self, search_dir, arg):
+        user, host, keyfile = arg
+
+        client = SSHClient()
+        client.load_system_host_keys()
+        client.connect(host, 22, user, None, None, keyfile, 60)
+        stdin, stdout, stderr = client.exec_command("ls \"%s\"" % search_dir)
+        client.close()
+
+        return stdout.split(" ")
 
     def input_handler(self, input):
         focus = self.listwalker.get_focus()
@@ -459,7 +439,11 @@ class ec2_launcher(urwid.Frame):
         elif input == 'tab':
             if self.footer_txt.mode[:3] == 'scp':
                 if self.footer_txt.stage == 2:
-                    self.tab_complete(self.footer_txt.get_text_value())
+                    self.tab_complete(self.footer_txt.get_text_value(), \
+                            None, self.local_find_files)
+                elif self.footer_txt.stage == 3:
+                    self.tab_complete(self.footer_txt.get_text_value(), \
+                            self.user, self.remote_find_files)
 
         # do an action
         elif input == 'enter' or input == 's':
