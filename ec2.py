@@ -511,20 +511,14 @@ class ec2_launcher(urwid.Frame):
     def remote_find_files(self, search_dir, arg):
         user, host, keyfile = arg
 
-#        paramiko.util.log_to_file("log")
-
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         client.load_system_host_keys()
         client.connect(host, 22, user, None, None, keyfile, 60)
-        stdin, stdout, stderr = client.exec_command("ls \"%s\"" % search_dir)
-        client.close()
-
+        stdin, stdout, stderr = client.exec_command("/bin/ls \"%s\"" % search_dir)
         out = stdout.read()
-        log.write(out)
-        log.write("\n")
 
-        return out.split(" ")
+        return out.splitlines()
 
     def input_handler(self, input):
         focus = self.listwalker.get_focus()
