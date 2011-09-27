@@ -1,0 +1,42 @@
+
+;; Credentials for each environment
+[prod]
+access_key = PROD_ACCESS_KEY
+secret_key = PROD_SECRET_KEY
+
+[test]
+access_key = TEST_ACCESS_KEY
+secret_key = TEST_SECRET_KEY
+
+[ec2_launcher]
+
+;; Enable or disable certain features.
+;; These settings can be overridden on a server-by-server basis
+ssh_enabled = yes
+scp_up_enabled = yes
+scp_down_enabled = yes
+mysql_enabled = no
+
+;; Your aws ssh keys should be stored in this directory with 
+;; two subdirectories named prod/ and test/
+key_path = /path/to/keypairs
+
+;; The default user ec2_launcher will attempt to log in with.
+;; This setting can be overridden on a server-by-server basis
+default_ssh_user = root
+
+;; The default user for mysql.  
+; default_mysql_user = 
+; default_mysql_pass = 
+
+;; The following sections are labelled according to different
+;; security groups under your aws account.  This allows servers
+;; of different types to have specific settings in the ec2_launcher.
+;; Only the settings ssh_enabled, scp_up_enabled, scp_down_enabled,
+;; mysql_enabled, default_ssh_user, default_mysql_user, and 
+;; default_mysql_pass may be overridden in these sections.
+;[mysql-server]
+;default_ssh_user = ec2-user
+;mysql_enabled = yes
+;default_mysql_user = mysql
+;default_mysql_pass = pa55w0rd

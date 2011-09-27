@@ -19,17 +19,133 @@ import ConfigParser
 import os
 import os.path
 
-c = ConfigParser.ConfigParser()
-c.readfp(open('/etc/ec2config'))
+#c = ConfigParser.ConfigParser()
+#c.readfp(open('/etc/ec2config'))
+#
+## Configuration for our environment
+#prod_access_key = c.get("prod", "access_key")
+#test_access_key = c.get("test", "access_key")
+#
+#prod_secret_key = c.get("prod", "secret_key")
+#test_secret_key = c.get("test", "secret_key")
+#
+#key_path = c.get("ec2_launcher", "key_path")
+#default_ssh_user = c.get("ec2_launcher", "default_ssh_user")
 
-# Configuration for our environment
-prod_access_key = c.get("prod", "access_key")
-test_access_key = c.get("test", "access_key")
+class Settings(ConfigParser.ConfigParser):
 
-prod_secret_key = c.get("prod", "secret_key")
-test_secret_key = c.get("test", "secret_key")
+    def __init__(self):
+        ConfigParser.ConfigParser.__init__(self)
+        self.fh = open('/etc/ec2config')
+        self.readfp(self.fh)
 
-key_path = c.get("ec2_launcher", "key_path")
+        self.settings = {}
+        self.server_settings = {}
+
+        if not self.read_settings():
+            raise Exception("Error in settings file")
+
+    def get_setting(self, setting, server_type = None):
+        if server_type != None:
+            if server_type in self.server_settings.keys():
+                if setting in self.server_settings[server_type].keys():
+                    return self.server_settings[server_type][setting]
+        if setting in self.settings.keys():
+            return self.settings[setting]
+        return None
+
+    def read_settings(self):
+
+        #
+        # Test and fetch required settings first
+        if not self.has_section("prod") or \
+                not self.has_section("test") or \
+                not self.has_section("ec2_launcher") or \
+                not self.has_option("prod", "access_key") or \
+                not self.has_option("test", "access_key") or \
+                not self.has_option("prod", "secret_key") or \
+                not self.has_option("test", "secret_key") or \
+                not self.has_option("ec2_launcher", "key_path"):
+            return False
+    
+        self.prod = ( \
+                self.get("prod", "access_key"), \
+                self.get("prod", "secret_key"))
+        self.test = ( \
+                self.get("test", "access_key"), \
+                self.get("test", "secret_key"))
+        self.key_path = self.get("ec2_launcher", "key_path")
+
+        #
+        # These settings are optional
+        self.settings["default_ssh_user"] = "root" \
+            if not self.has_option("ec2_launcher", "default_ssh_user") \
+            else self.get("ec2_launcher", "default_ssh_user")
+
+        self.settings["default_mysql_user"] = "mysql" \
+            if not self.has_option("ec2_launcher", "default_mysql_user") \
+            else self.get("ec2_launcher", "default_mysql_user")
+
+        self.settings["default_mysql_pass"] = "" \
+            if not self.has_option("ec2_launcher", "default_mysql_pass") \
+            else self.get("ec2_launcher", "default_mysql_pass")
+
+        self.settings["ssh_enabled"] = True \
+            if not self.has_option("ec2_launcher", "ssh_enabled") \
+            else (self.get("ec2_launcher", "ssh_enabled") == "yes")
+
+        self.settings["scp_up_enabled"] = True \
+            if not self.has_option("ec2_launcher", "scp_up_enabled") \
+            else (self.get("ec2_launcher", "scp_up_enabled") == "yes")
+
+        self.settings["scp_down_enabled"] = True \
+            if not self.has_option("ec2_launcher", "scp_down_enabled") \
+            else (self.get("ec2_launcher", "scp_down_enabled") == "yes")
+
+        self.settings["mysql_enabled"] = False \
+            if not self.has_option("ec2_launcher", "mysql_enabled") \
+            else (self.get("ec2_launcher", "mysql_enabled") == "yes")
+
+        for s in self.sections():
+            if s in ("prod", "test", "ec2_launcher"):
+                continue
+            # Section names correspond with instance security groups
+            self.server_settings[s] = { \
+                    "default_ssh_user" : self.settings["default_ssh_user"], \
+                    "default_mysql_user" : \
+                                    self.settings["default_mysql_user"], \
+                    "default_mysql_pass" : \
+                                    self.settings["default_mysql_pass"] , \
+                    "ssh_enabled" : self.settings["ssh_enabled"] , \
+                    "scp_up_enabled" : self.settings["scp_up_enabled"] , \
+                    "scp_down_enabled" : self.settings["scp_down_enabled"] , \
+                    "mysql_enabled" : self.settings["mysql_enabled"] \
+                    }
+
+            if self.has_option(s, "default_ssh_user"):
+                self.server_settings[s]["default_ssh_user"] = \
+                        self.get(s, "default_ssh_user")
+            if self.has_option(s, "default_mysql_user"):
+                self.server_settings[s]["default_mysql_user"] = \
+                        self.get(s, "default_mysql_user")
+            if self.has_option(s, "default_mysql_pass"):
+                self.server_settings[s]["default_mysql_pass"] = \
+                        self.get(s, "default_mysql_pass")
+            if self.has_option(s, "ssh_enabled"):
+                self.server_settings[s]["ssh_enabled"] = \
+                        self.get(s, "ssh_enabled")
+            if self.has_option(s, "scp_up_enabled"):
+                self.server_settings[s]["scp_up_enabled"] = \
+                        self.get(s, "scp_up_enabled")
+            if self.has_option(s, "scp_down_enabled"):
+                self.server_settings[s]["scp_down_enabled"] = \
+                        self.get(s, "scp_down_enabled")
+            if self.has_option(s, "mysql_enabled"):
+                self.server_settings[s]["mysql_enabled"] = \
+                        self.get(s, "mysql_enabled")
+            
+        return True
+
 
 import boto
 import sys, os
@@ -37,6 +153,10 @@ import re
 import io
 import subprocess
 import urwid
+import paramiko
+
+# Our program settings
+settings = Settings()
 
 # Use for testing, since we can't print debugging statements
 log = open("log", "w")
@@ -123,11 +243,9 @@ def handle_args(argv):
 
 def start_ec2(environment):
     if environment == 'prod':
-        access_key = prod_access_key
-        secret_key = prod_secret_key
+        access_key, secret_key = settings.prod
     else:
-        access_key = test_access_key
-        secret_key = test_secret_key
+        access_key, secret_key = settings.test
 
     return boto.connect_ec2(access_key, secret_key)
     
@@ -229,11 +347,11 @@ class ec2_launcher(urwid.Frame):
     instance_line_regex = re.compile( \
     '^(i-[0-9a-f]{8}):\s+(.*?)\s+(.*?)\s+(.*?)\s+(.*?)\s+(.*?)\s+(.*?)\s+(.*)$')
 
-    def __init__(self, environment, instances):
+    def __init__(self, environment, instance_list, instances):
 
         # Build a list of widgets using data
         list = []
-        for item in instances:
+        for item in instance_list:
             row_text = "%s: %25s %30s %15s %45s %45s %15s %15s %30s" % \
                         ( item['instance-id'] \
                         , item['name'] \
@@ -247,6 +365,8 @@ class ec2_launcher(urwid.Frame):
             t = urwid.Text(row_text, align='left', wrap='clip')
             list.append(urwid.AttrMap(t, 'instance_row', 'instance_row_focused'))
         self.listwalker = urwid.SimpleListWalker(list)
+
+        self.environment = environment
 
         # These will be returned from this class's call to main().  The
         # command and data specify what the program is to do after displaying
@@ -277,6 +397,7 @@ class ec2_launcher(urwid.Frame):
 
         # Dictionary of instances 
         self.instances = instances
+        self.instance_list = instance_list
 
         # GUI stuff
         self.listbox = urwid.ListBox(self.listwalker)
@@ -301,30 +422,26 @@ class ec2_launcher(urwid.Frame):
         self.command = "refresh"
         raise urwid.ExitMainLoop()
 
-    def action_ssh(self, line, user):
+    def action_ssh(self, instance):
         self.command = "ssh"
-        m = self.instance_line_regex.match(line)
-        if m:
-            instance_id = m.group(1)
-            self.data = { \
-                    'instance-id': instance_id, \
-                    'user': user \
-                }
+            
+        self.data = { \
+                'instance': instance, \
+                'user': self.user \
+            }
 
         raise urwid.ExitMainLoop()
 
-    def action_scp(self, line, direction, user, local_file, remote_file):
+    def action_scp(self, instance, direction, local_file, remote_file):
         self.command = "scp"
-        m = self.instance_line_regex.match(line)
-        if m:
-            instance_id = m.group(1)
-            self.data = { \
-                    'instance-id': instance_id, \
-                    'user': user, \
-                    'direction': direction, \
-                    'local_file': local_file, \
-                    'remote_file': remote_file, \
-                }
+
+        self.data = { \
+                'instance': instance, \
+                'user': self.user, \
+                'direction': direction, \
+                'local_file': local_file, \
+                'remote_file': remote_file, \
+            }
 
         raise urwid.ExitMainLoop()
 
@@ -394,13 +511,20 @@ class ec2_launcher(urwid.Frame):
     def remote_find_files(self, search_dir, arg):
         user, host, keyfile = arg
 
-        client = SSHClient()
+#        paramiko.util.log_to_file("log")
+
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         client.load_system_host_keys()
         client.connect(host, 22, user, None, None, keyfile, 60)
         stdin, stdout, stderr = client.exec_command("ls \"%s\"" % search_dir)
         client.close()
 
-        return stdout.split(" ")
+        out = stdout.read()
+        log.write(out)
+        log.write("\n")
+
+        return out.split(" ")
 
     def input_handler(self, input):
         focus = self.listwalker.get_focus()
@@ -442,31 +566,55 @@ class ec2_launcher(urwid.Frame):
                     self.tab_complete(self.footer_txt.get_text_value(), \
                             None, self.local_find_files)
                 elif self.footer_txt.stage == 3:
+                    # Get instance information 
+                    text = focus[0].base_widget.get_text()[0]
+                    m = self.instance_line_regex.match(text)
+                    if not m:
+                        raise Exception("Line does not match regex")
+                    instance = self.instances[m.group(1)]
+
+                    user = settings.get_setting("default_ssh_user", \
+                            instance["server-type"])
+                    host = instance["public-dns"]
+                    keyfile = "%s/%s/%s.pem" % \
+                            (settings.key_path, self.environment, \
+                            instance["server-type"])
+
                     self.tab_complete(self.footer_txt.get_text_value(), \
-                            self.user, self.remote_find_files)
+                            (user, host, keyfile), self.remote_find_files)
 
         # do an action
         elif input == 'enter' or input == 's':
             elem = focus[0]
             text = elem.base_widget.get_text()[0]
+
+            m = self.instance_line_regex.match(text)
+            if not m:
+                raise Exception("Line does not match regex")
+            instance = self.instances[m.group(1)]
+
             if self.footer_input:
                 if self.footer_txt.mode == 'ssh':
                     self.user = self.footer_txt.get_text_value()
                     self.footer_input = False
                     self.footer_txt.clear_mode()
                     self.set_focus('body')
-                    self.action_ssh(text, self.user)
+                    self.action_ssh(instance)
                 elif self.footer_txt.mode[:3] == 'scp':
                     if self.footer_txt.stage == 1:
                         self.user = self.footer_txt.get_text_value()
+                        if "" == self.user:
+                            self.user = \
+                                    settings.get_setting("default_ssh_user", \
+                                    instance["server-type"])
                     elif self.footer_txt.stage == 2:
                         self.local_file = self.footer_txt.get_text_value()
                     elif self.footer_txt.stage == 3:
                         self.remote_file = self.footer_txt.get_text_value()
                         self.set_focus('body')
-                        self.action_scp(text, \
+                        self.action_scp( \
+                                instance, \
                                 self.footer_txt.mode[4:], \
-                                self.user, \
                                 self.local_file, \
                                 self.remote_file )
                         self.footer_txt.clear_mode()
@@ -476,7 +624,9 @@ class ec2_launcher(urwid.Frame):
                     self.search_phrase = self.footer_txt.get_text_value()
                     self.search(self.search_phrase)
             else:
-                self.action_ssh(text, self.user)
+                self.user = settings.get_setting("default_ssh_user", \
+                        instance["server-type"])
+                self.action_ssh(instance)
 
         # continue searching
         elif input == 'n':
@@ -544,12 +694,12 @@ def cmd_list(ec2, environment, options, instances):
              lambda a: str(a[sort]), sort_reverse)
 
     # Display the data using urwid
-    action, data = ec2_launcher(environment, out).main()
+    action, data = ec2_launcher(environment, out, instances).main()
     print action
     print data
 
     if action == 'ssh':
-        instance = instances[data['instance-id']]
+        instance = data['instance']
         user = data['user']
         cmd_ssh(ec2, environment, options, (user, instance))
         return False
@@ -577,7 +727,8 @@ def cmd_ssh(ec2, environment, options, (user, instance)):
             , "-o" \
             , "StrictHostKeyChecking=no" \
             , "-i" \
-            , os.path.join(key_path, environment, "%s.pem" % instance['server-type']) \
+            , os.path.join(settings.key_path, environment, \
+                "%s.pem" % instance['server-type']) \
             , "%s@%s" % (user, instance['public-dns'])])
     ssh.wait()
 
@@ -595,7 +746,8 @@ def cmd_scp(ec2, environment, options, direction, \
             , "-o" \
             , "StrictHostKeyChecking=no" \
             , "-i" \
-            , os.path.join(key_path, environment, "%s.pem" % instance['server-type']) \
+            , os.path.join(settings.key_path, environment, \
+                "%s.pem" % instance['server-type']) \
             , "-r" \
             , source_file \
             , dest_file])
@@ -605,7 +757,8 @@ def cmd_scp(ec2, environment, options, direction, \
             , "-o" \
             , "StrictHostKeyChecking=no" \
             , "-i" \
-            , os.path.join(key_path, environment, "%s.pem" % instance['server-type']) \
+            , os.path.join(settings.key_path, environment, \
+                "%s.pem" % instance['server-type']) \
             , "-r" \
             , source_file \
             , dest_file])
@@ -634,7 +787,8 @@ def main(argv):
                 print("Error: syntax is [user@]i-XXXXXXXX")
                 return 1
             else:
-                user = "root"
+                user = settings.get_setting("default_ssh_user", \
+                        instances[instance_id]['server-type'])
         else:
             user = m.group(1)
             instance_id = m.group(2)
